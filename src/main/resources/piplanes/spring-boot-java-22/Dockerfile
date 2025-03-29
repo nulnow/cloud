@@ -1,6 +1,12 @@
 FROM ubuntu:22.04
-FROM openjdk:22-jdk
 
-COPY script.sh .
 
-RUN "./script.sh"
+RUN apt update || exit
+RUN apt -y install curl || exit
+RUN apt -y install git || exit
+RUN apt -y install openjdk-17-jdk || exit
+
+
+COPY ./run.sh .
+
+CMD ["./run.sh"]

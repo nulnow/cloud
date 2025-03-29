@@ -89,19 +89,20 @@ public class MainController {
     public Mono<String> createApp(
             @RequestBody CreateAppRequest createAppRequest
     ) {
-        String CONTAINER_PORT = "3000";
-        String HOST_PORT = "80";
-        String HOST_IP = String.format("%s.nulnow.com", createAppRequest.name());
+        if ("React SPA".equals(createAppRequest.type())) {
+            String CONTAINER_PORT = "3000";
+            String HOST_PORT = "80";
+            String HOST_IP = String.format("%s.nulnow.com", createAppRequest.name());
 
-        return webClient.post()
-                .uri(uriBuilder -> uriBuilder
-                        .path("/v1.48/containers/create")
-                        .queryParam("name", createAppRequest.name())
-                        .build()
-                )
-                .header("Content-Type", "application/json")
-                .bodyValue(
-                        String.format("""
+            return webClient.post()
+                    .uri(uriBuilder -> uriBuilder
+                            .path("/v1.48/containers/create")
+                            .queryParam("name", createAppRequest.name())
+                            .build()
+                    )
+                    .header("Content-Type", "application/json")
+                    .bodyValue(
+                            String.format("""
                                 {
                                   "Image": "%s",
                                   "Env": [
@@ -122,19 +123,69 @@ public class MainController {
                                   }
                                 }
                                 """, "dude/man:v2", createAppRequest.repositoryUrl(), CONTAINER_PORT, CONTAINER_PORT, HOST_IP, HOST_PORT)
-                )
-                .exchangeToMono(clientResponse -> {
-                    return clientResponse.bodyToMono(JsonNode.class)
-                            .flatMap(createContainerResponse -> {
-                                return webClient.post()
-                                        .uri("/v1.48/containers/"+ createContainerResponse.get("Id").asText() +"/start")
-                                        .retrieve()
-                                        .bodyToMono(String.class)
-                                        .map(result -> {
-                                            return result;
-                                        });
-                            });
-                });
+                    )
+                    .exchangeToMono(clientResponse -> {
+                        return clientResponse.bodyToMono(JsonNode.class)
+                                .flatMap(createContainerResponse -> {
+                                    return webClient.post()
+                                            .uri("/v1.48/containers/"+ createContainerResponse.get("Id").asText() +"/start")
+                                            .retrieve()
+                                            .bodyToMono(String.class)
+                                            .map(result -> {
+                                                return result;
+                                            });
+                                });
+                    });
+        } else if ("Spring Boot".equals(createAppRequest.type())) {
+            String CONTAINER_PORT = "8080";
+            String HOST_PORT = "8081";
+            String HOST_IP = String.format("%s.nulnow.com", createAppRequest.name());
+
+            return webClient.post()
+                    .uri(uriBuilder -> uriBuilder
+                            .path("/v1.48/containers/create")
+                            .queryParam("name", createAppRequest.name())
+                            .build()
+                    )
+                    .header("Content-Type", "application/json")
+                    .bodyValue(
+                            String.format("""
+                                {
+                                  "Image": "%s",
+                                  "Env": [
+                                    "REPOSITORY_URL=%s"
+                                  ],
+                                  "ExposedPorts": {
+                                      "%s/tcp": {}
+                                    },
+                                  "HostConfig": {
+                                    "PortBindings": {
+                                      "%s/tcp": [
+                                            {
+                                            "HostIp": "%s",
+                                            "HostPort": "%s"
+                                          }
+                                      ]
+                                    }
+                                  }
+                                }
+                                """, "java", createAppRequest.repositoryUrl(), CONTAINER_PORT, CONTAINER_PORT, HOST_IP, HOST_PORT)
+                    )
+                    .exchangeToMono(clientResponse -> {
+                        return clientResponse.bodyToMono(JsonNode.class)
+                                .flatMap(createContainerResponse -> {
+                                    return webClient.post()
+                                            .uri("/v1.48/containers/"+ createContainerResponse.get("Id").asText() +"/start")
+                                            .retrieve()
+                                            .bodyToMono(String.class)
+                                            .map(result -> {
+                                                return result;
+                                            });
+                                });
+                    });
+        }
+
+        throw new RuntimeException("TODO");
     }
 
     @GetMapping(value = "/list/", produces = MediaType.APPLICATION_JSON_VALUE)
