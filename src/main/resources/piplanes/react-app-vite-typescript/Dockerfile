@@ -1,6 +1,11 @@
 FROM ubuntu:22.04
 
-COPY ./script.sh .
+ARG REPOSITORY_URL=""
+ENV REPOSITORY_URL=$REPOSITORY_URL
 
-#CMD "chmod +777 ./script.sh"
-CMD ["/bin/bash", "./script.sh"]
+COPY setup.sh .
+COPY run.sh .
+
+RUN ./setup.sh
+
+CMD ["./run.sh"]

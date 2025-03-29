@@ -6,4 +6,4 @@ cd ./app
 
 git clone $REPO .
 
-./gradlew build && java -jar build/libs/TODO.jar
+./gradlew build && ./gradlew bootRun

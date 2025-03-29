@@ -24,13 +24,8 @@ repositories {
 }
 
 dependencies {
-	implementation 'org.springframework.boot:spring-boot-starter-data-r2dbc'
+//	implementation 'org.springframework.boot:spring-boot-starter-data-r2dbc'
 	implementation('org.springframework.boot:spring-boot-starter-webflux')
-	implementation('com.spotify:docker-client:8.16.0')
-	implementation('com.github.docker-java:docker-java-core:3.3.6')
-	implementation('com.github.docker-java:docker-java-transport-httpclient5:3.3.6')
-//	compileOnly 'org.projectlombok:lombok'
-//	annotationProcessor 'org.projectlombok:lombok'
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
 	testImplementation 'io.projectreactor:reactor-test'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'

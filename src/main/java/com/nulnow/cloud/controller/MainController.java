@@ -1,148 +1,155 @@
 package com.nulnow.cloud.controller;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.github.dockerjava.api.DockerClient;
-import com.github.dockerjava.httpclient5.ApacheDockerHttpClient;
-import com.github.dockerjava.transport.DockerHttpClient;
-import com.spotify.docker.client.DefaultDockerClient;
-import com.spotify.docker.client.LogStream;
-import com.spotify.docker.client.exceptions.DockerCertificateException;
-import com.spotify.docker.client.exceptions.DockerException;
-import com.spotify.docker.client.messages.*;
-import io.netty.channel.unix.DomainSocketAddress;
+
 import org.springframework.http.MediaType;
-import org.springframework.http.client.reactive.ReactorClientHttpConnector;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.reactive.function.client.ExchangeFilterFunction;
 import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
-import reactor.netty.http.client.HttpClient;
 
-import com.github.dockerjava.core.DockerClientConfig;
-import com.github.dockerjava.core.DefaultDockerClientConfig;
-
-import java.net.URISyntaxException;
-import java.time.Duration;
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1")
 @CrossOrigin
 public class MainController {
+    private ObjectMapper objectMapper = new ObjectMapper();
+
+    private final WebClient webClient = WebClient.builder()
+            .baseUrl("http://localhost:2375")
+            .filters(exchangeFilterFunctions -> {
+                exchangeFilterFunctions.add(logRequest());
+//                exchangeFilterFunctions.add(logResponse());
+            })
+            .build();
+
+    ExchangeFilterFunction logRequest() {
+        return ExchangeFilterFunction.ofRequestProcessor(clientRequest -> {
+            StringBuilder sb = new StringBuilder("Request: \n");
+
+            try {
+                System.out.println(objectMapper.writeValueAsString(clientRequest));
+            } catch (JsonProcessingException e) {
+                System.out.println(e);
+            }
+
+
+
+            sb.append(clientRequest.url());
+            sb.append("\n");
+            sb.append(clientRequest.body());
+            sb.append("\n");
+
+            //append clientRequest method and url
+            clientRequest
+                    .headers()
+                    .forEach((name, values) -> values.forEach(value -> {
+                        sb.append(value);
+                    }));
+
+            System.out.println(sb.toString());
+
+            return Mono.just(clientRequest);
+        });
+    }
+
+//    ExchangeFilterFunction logResponse() {
+//        return ExchangeFilterFunction.ofResponseProcessor(clientResponse -> {
+//            return clientResponse.bodyToMono(String.class).flatMap(body -> {
+//                StringBuilder sb = new StringBuilder("Response: \n");
+//                sb.append("\n");
+//                sb.append(clientResponse.statusCode());
+//                sb.append("\n");
+//
+//                clientResponse.headers().asHttpHeaders()
+//                        .forEach((header, value) -> {
+//                            sb.append(header);
+//                            sb.append(value.toString());
+//                        });
+//                sb.append("\n");
+//                sb.append(body);
+//                System.out.println(sb.toString());
+//
+//                return Mono.just(clientResponse);
+//            });
+//        });
+//    }
+
     public record CreateAppRequest(
             String name,
-            String repositoryUrl
-    ) {
-
-    }
+            String repositoryUrl,
+            String type
+    ) {}
 
     @PostMapping(value = "/create-app", produces = MediaType.APPLICATION_JSON_VALUE)
     public Mono<String> createApp(
             @RequestBody CreateAppRequest createAppRequest
-    ) throws DockerCertificateException, DockerException, InterruptedException {
-        // create ubuntu container
-        var repositoryUrl = createAppRequest.repositoryUrl();
-        // docker run --env REPOSITORY_URL=<value>
+    ) {
+        String CONTAINER_PORT = "3000";
+        String HOST_PORT = "80";
+        String HOST_IP = String.format("%s.nulnow.com", createAppRequest.name());
 
-        final DefaultDockerClient docker = DefaultDockerClient.fromEnv().build();
-        docker.pull("busybox");
-
-// Bind container ports to host ports
-        final String[] ports = {"80", "22"};
-        final Map<String, List<PortBinding>> portBindings = new HashMap<>();
-        for (String port : ports) {
-            List<PortBinding> hostPorts = new ArrayList<>();
-            hostPorts.add(PortBinding.of("0.0.0.0", port));
-            portBindings.put(port, hostPorts);
-        }
-
-// Bind container port 443 to an automatically allocated available host port.
-        List<PortBinding> randomPort = new ArrayList<>();
-        randomPort.add(PortBinding.randomPort("0.0.0.0"));
-        portBindings.put("443", randomPort);
-
-        final HostConfig hostConfig = HostConfig.builder().portBindings(portBindings).build();
-
-// Create container with exposed ports
-        final ContainerConfig containerConfig = ContainerConfig.builder()
-                .hostConfig(hostConfig)
-                .image("busybox").exposedPorts(ports)
-                .cmd("sh", "-c", "while :; do sleep 1; done")
-                .build();
-
-        final ContainerCreation creation = docker.createContainer(containerConfig);
-        final String id = creation.id();
-
-// Inspect container
-        final ContainerInfo info = docker.inspectContainer(id);
-
-// Start container
-        docker.startContainer(id);
-
-// Exec command inside running container with attached STDOUT and STDERR
-        final String[] command = {"sh", "-c", "ls"};
-        final ExecCreation execCreation = docker.execCreate(
-                id, command, DefaultDockerClient.ExecCreateParam.attachStdout(),
-                DefaultDockerClient.ExecCreateParam.attachStderr());
-        final LogStream output = docker.execStart(execCreation.id());
-        final String execOutput = output.readFully();
-
-// Kill container
-        docker.killContainer(id);
-
-// Remove container
-        docker.removeContainer(id);
-
-// Close the docker client
-        docker.close();
-
-        return Mono.just(execOutput);
-
-//        record BodyValue(
-//                String dockerfile
-//        ) {}
-
-//        HttpClient httpClient = HttpClient.create()
-//                .remoteAddress(() -> new DomainSocketAddress("/var/run/docker.sock"));
-//
-//        WebClient webClient = WebClient.builder()
-//                .clientConnector(new ReactorClientHttpConnector(httpClient))
-//                .baseUrl("http://localhost")
-//                .build();
-//
-//        return webClient.get()
-//                .uri("/version") // URI Docker API
-//                .retrieve()
-//                .bodyToMono(String.class);
-
-//        return webClient.post()
-//                .uri("/v1.41/containers/create")
-//                .header("Content-Type", "application/json")
-//                .bodyValue(
-//                        "{\"Image\": \"alpine\", \"Cmd\": [\"echo\", \"hello world\"]}"
-////                        new BodyValue("/Users/andrey/WebstormProjects/cloud/src/main/resources/piplanes/react-app-vite-typescript/Dockerfile")
-//                )
-//                .retrieve()
-//                .bodyToMono(Response.class)
-//                .map(response -> {
-//                    return "ok";
-//                });
-
-//        curl -v -X POST -H "Content-Type:application/tar" --data-binary '@Dockerfile.tar.gz' http://127.0.0.1:5000/build?t=build_test
-
-//        return Mono.just("ok");
+        return webClient.post()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/v1.48/containers/create")
+                        .queryParam("name", createAppRequest.name())
+                        .build()
+                )
+                .header("Content-Type", "application/json")
+                .bodyValue(
+                        String.format("""
+                                {
+                                  "Image": "%s",
+                                  "Env": [
+                                    "REPOSITORY_URL=%s"
+                                  ],
+                                  "ExposedPorts": {
+                                      "%s/tcp": {}
+                                    },
+                                  "HostConfig": {
+                                    "PortBindings": {
+                                      "%s/tcp": [
+                                            {
+                                            "HostIp": "%s",
+                                            "HostPort": "%s"
+                                          }
+                                      ]
+                                    }
+                                  }
+                                }
+                                """, "dude/man:v2", createAppRequest.repositoryUrl(), CONTAINER_PORT, CONTAINER_PORT, HOST_IP, HOST_PORT)
+                )
+                .exchangeToMono(clientResponse -> {
+                    return clientResponse.bodyToMono(JsonNode.class)
+                            .flatMap(createContainerResponse -> {
+                                return webClient.post()
+                                        .uri("/v1.48/containers/"+ createContainerResponse.get("Id").asText() +"/start")
+                                        .retrieve()
+                                        .bodyToMono(String.class)
+                                        .map(result -> {
+                                            return result;
+                                        });
+                            });
+                });
     }
 
     @GetMapping(value = "/list/", produces = MediaType.APPLICATION_JSON_VALUE)
-    public Mono<String> listApps() {
-        return Mono.just("[]");
+    public Flux<JsonNode> listApps() {
+        return webClient.get()
+                .uri("/v1.48/containers/json")
+                .retrieve()
+                .bodyToFlux(JsonNode.class);
     }
 
     @DeleteMapping(value = "/delete/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
-    public Mono<String> deleteApp(@PathVariable String id) {
-        return Mono.just("[]");
+    public Mono<JsonNode> deleteApp(@PathVariable String id) {
+        return webClient.delete()
+                .uri("/v1.48/containers/" + id + "?force=true")
+                .retrieve()
+                .bodyToMono(JsonNode.class);
     }
 }
